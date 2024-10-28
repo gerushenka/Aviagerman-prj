@@ -76,6 +76,7 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation ("androidx.compose.foundation:foundation:1.4.0")
     implementation("com.google.accompanist:accompanist-pager:0.24.13-rc")
+    implementation(libs.androidx.recyclerview)
 
     ksp(libs.androidx.room.compiler)
 

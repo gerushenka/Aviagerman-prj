@@ -30,15 +30,20 @@ import com.example.aviagerman.dao.FlightDao
 import com.example.aviagerman.entity.Flight
 import com.google.accompanist.pager.ExperimentalPagerApi
 import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
 import android.widget.TextView
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import com.example.aviagerman.dao.BookingDao
 import com.example.aviagerman.entity.Booking
@@ -46,17 +51,22 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.*
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 
 @ExperimentalPagerApi
 @ExperimentalFoundationApi
 class MainActivity : ComponentActivity() {
-    // Объявляем нативную функцию
-    external fun stringFromJNI(): String
-
+    //  external fun stringFromJNI(): String
+    init {
+        System.loadLibrary("aviagerman-lib")
+    }
+    private external fun validatePriceNative(price: String): Boolean
+    private fun validatePrice(price: String): Boolean {
+        return validatePriceNative(price) // Вызов JNI функции
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        System.loadLibrary("aviagerman-lib")
 
         val db = Room.databaseBuilder(
             applicationContext,
@@ -69,11 +79,13 @@ class MainActivity : ComponentActivity() {
             val flightDao = db.flightDao()
             val bookingDao = db.bookingDao()
 
-            val nativeString = stringFromJNI()
-
             setContent {
-                MyApp(userDao = userDao, flightDao = flightDao, bookingDao = bookingDao)
-                Text(text = nativeString)
+                MyApp(
+                    userDao = userDao,
+                    flightDao = flightDao,
+                    bookingDao = bookingDao,
+                    validatePrice = this@MainActivity::validatePrice // Передача функции
+                )
             }
         }
     }
@@ -85,7 +97,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 @ExperimentalFoundationApi
 @ExperimentalPagerApi
-fun MyApp(userDao: UserDao, flightDao: FlightDao, bookingDao: BookingDao) {
+fun MyApp(
+    userDao: UserDao,
+    flightDao: FlightDao,
+    bookingDao: BookingDao,
+    validatePrice: (String) -> Boolean // Добавьте этот параметр
+) {
     val pagerState = rememberPagerState(initialPage = 0)
 
     val tabs = listOf("Поиск билетов", "Мои брони", "Профиль")
@@ -112,11 +129,19 @@ fun MyApp(userDao: UserDao, flightDao: FlightDao, bookingDao: BookingDao) {
                 count = tabs.size
             ) { page ->
                 when (page) {
-                    0 -> TicketSearchScreen(userRole = userRole, flightDao = flightDao, onNavigateToLogin = {
-                        coroutineScope.launch {
-                            pagerState.scrollToPage(2)
-                        }
-                    },userDao = userDao, bookingDao = bookingDao, nickname = nickname)
+                    0 -> TicketSearchScreen(
+                        userRole = userRole,
+                        flightDao = flightDao,
+                        onNavigateToLogin = {
+                            coroutineScope.launch {
+                                pagerState.scrollToPage(2)
+                            }
+                        },
+                        userDao = userDao,
+                        bookingDao = bookingDao,
+                        nickname = nickname,
+                        validatePrice = validatePrice // Передача функции
+                    )
                     1 -> BookingScreen(bookingDao = bookingDao, userDao = userDao, flightDao = flightDao, nickname = nickname)
                     2 -> ProfileScreen(userDao = userDao, nickname = nickname, onNicknameChange = { newNickname -> nickname = newNickname }, flightDao = flightDao)
                 }
@@ -124,7 +149,6 @@ fun MyApp(userDao: UserDao, flightDao: FlightDao, bookingDao: BookingDao) {
         }
     }
 }
-
 @Composable
 fun BottomNavigationBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
     NavigationBar {
@@ -151,7 +175,15 @@ fun BottomNavigationBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
 
 
 @Composable
-fun TicketSearchScreen(userRole: String, flightDao: FlightDao, onNavigateToLogin: () -> Unit, userDao: UserDao, bookingDao: BookingDao, nickname: String) {
+fun TicketSearchScreen(
+    userRole: String,
+    flightDao: FlightDao,
+    onNavigateToLogin: () -> Unit,
+    userDao: UserDao,
+    bookingDao: BookingDao,
+    nickname: String,
+    validatePrice: (String) -> Boolean
+) {
     var showAddFlightDialog by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf("") }
     var availableFlights by remember { mutableStateOf<List<Flight>>(emptyList()) }
@@ -171,7 +203,11 @@ fun TicketSearchScreen(userRole: String, flightDao: FlightDao, onNavigateToLogin
         Spacer(modifier = Modifier.height(16.dp))
 
         // Показ всех рейсов или фильтр по дате
-        if (isAllFlightsShown) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Button(onClick = {
                 coroutineScope.launch(Dispatchers.IO) {
                     val flights = flightDao.getAllFlights()
@@ -183,42 +219,21 @@ fun TicketSearchScreen(userRole: String, flightDao: FlightDao, onNavigateToLogin
             }) {
                 Text("Показать все рейсы")
             }
-            Spacer(modifier = Modifier.height(16.dp))
 
-            DatePickerButton(selectedDate) { date ->
-                selectedDate = date
-                isAllFlightsShown = false
-                coroutineScope.launch(Dispatchers.IO) {
-                    val flights = flightDao.getAllFlights().filter { it.date == date }
-                    withContext(Dispatchers.Main) {
-                        availableFlights = flights
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                DatePickerButton(selectedDate) { date ->
+                    selectedDate = date
+                    isAllFlightsShown = false
+                    coroutineScope.launch(Dispatchers.IO) {
+                        val flights = flightDao.getAllFlights().filter { it.date == date }
+                        withContext(Dispatchers.Main) {
+                            availableFlights = flights
+                        }
                     }
                 }
-            }
-
-        } else {
-            DatePickerButton(selectedDate) { date ->
-                selectedDate = date
-                isAllFlightsShown = false
-                coroutineScope.launch(Dispatchers.IO) {
-                    val flights = flightDao.getAllFlights().filter { it.date == date }
-                    withContext(Dispatchers.Main) {
-                        availableFlights = flights
-                    }
+                if (selectedDate.isNotEmpty()) {
+                    Text(text = selectedDate, style = MaterialTheme.typography.bodySmall)
                 }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(onClick = {
-                coroutineScope.launch(Dispatchers.IO) {
-                    val flights = flightDao.getAllFlights()
-                    withContext(Dispatchers.Main) {
-                        availableFlights = flights
-                        isAllFlightsShown = true
-                    }
-                }
-            }) {
-                Text("Показать все рейсы")
             }
         }
 
@@ -231,22 +246,39 @@ fun TicketSearchScreen(userRole: String, flightDao: FlightDao, onNavigateToLogin
                 style = MaterialTheme.typography.titleMedium
             )
             availableFlights.forEach { flight ->
-                Button(
-                    onClick = {
-                        if (userRole.isEmpty()) {
-                            onNavigateToLogin()
-                        } else {
-                            selectedFlight = flight
-                            showConfirmationDialog = true
-                        }
-                    },
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp)
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(horizontalAlignment = Alignment.Start) {
-                        Text(text = "${flight.departure} - ${flight.arrival}", style = MaterialTheme.typography.bodyMedium)
-                        Text(text = "Время: ${flight.time}, Цена: ${flight.price} руб.", style = MaterialTheme.typography.bodySmall)
+                    Button(
+                        onClick = {
+                            if (userRole.isEmpty()) {
+                                onNavigateToLogin()
+                            } else {
+                                selectedFlight = flight
+                                showConfirmationDialog = true
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(horizontalAlignment = Alignment.Start) {
+                            Text(text = "${flight.departure} - ${flight.arrival}", style = MaterialTheme.typography.bodyMedium)
+                            Text(text = "Время: ${flight.time}, Цена: ${flight.price} руб.", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    if (userRole == "admin") {
+                        IconButton(onClick = {
+                            coroutineScope.launch(Dispatchers.IO) {
+                                flightDao.deleteFlight(flight)
+                                withContext(Dispatchers.Main) {
+                                    availableFlights = availableFlights.filter { it.id != flight.id }
+                                }
+                            }
+                        }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Удалить рейс")
+                        }
                     }
                 }
             }
@@ -285,10 +317,11 @@ fun TicketSearchScreen(userRole: String, flightDao: FlightDao, onNavigateToLogin
         }
 
         if (showAddFlightDialog) {
-            AddFlightDialog(onDismiss = { showAddFlightDialog = false }, userDao = userDao, flightDao = flightDao)
+            AddFlightDialog(onDismiss = { showAddFlightDialog = false }, userDao = userDao, flightDao = flightDao, validatePrice = validatePrice)
         }
     }
 }
+
 
 
 @Composable
@@ -308,6 +341,39 @@ fun ConfirmationDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
             }
         }
     )
+}
+
+class BookingAdapter(private val bookings: List<Booking>, private val flightDetails: Map<Int, Flight>, private val bookingDao: BookingDao, private val onBookingDeleted: (Int) -> Unit) : RecyclerView.Adapter<BookingAdapter.BookingViewHolder>() {
+
+    class BookingViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val flightInfo: TextView = itemView.findViewById(R.id.flightInfo)
+        val bookingStatus: TextView = itemView.findViewById(R.id.bookingStatus)
+        val bookingDate: TextView = itemView.findViewById(R.id.bookingDate)
+        val deleteButton: Button = itemView.findViewById(R.id.deleteButton)
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): BookingViewHolder {
+        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_booking, parent, false)
+        return BookingViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: BookingViewHolder, position: Int) {
+        val booking = bookings[position]
+        val flight = flightDetails[booking.flightId]
+        holder.flightInfo.text = "${flight?.departure} - ${flight?.arrival}"
+        holder.bookingStatus.text = "Статус: ${booking.status}"
+        holder.bookingDate.text = "Дата бронирования: ${booking.bookingDate}"
+        holder.deleteButton.setOnClickListener {
+            CoroutineScope(Dispatchers.IO).launch {
+                bookingDao.deleteBookingById(booking.id)
+            }
+            onBookingDeleted(booking.id)
+        }
+    }
+
+    override fun getItemCount(): Int {
+        return bookings.size
+    }
 }
 
 @Composable
@@ -344,161 +410,159 @@ fun BookingScreen(userDao: UserDao, bookingDao: BookingDao, flightDao: FlightDao
         Spacer(modifier = Modifier.height(16.dp))
 
         if (bookings.isNotEmpty()) {
-            LazyColumn {
-                items(bookings) { booking ->
-                    val flight = flightDetails[booking.flightId]
-                    if (flight != null) {
-                        FlightBookingCard(flight, booking, bookingDao) { bookingId ->
+            AndroidView(
+                factory = { context ->
+                    RecyclerView(context).apply {
+                        layoutManager = LinearLayoutManager(context)
+                        adapter = BookingAdapter(bookings, flightDetails, bookingDao) { bookingId ->
                             bookings = bookings.filter { it.id != bookingId } // Удаляем бронирование из списка
                         }
-                    } else {
-                        NoFlightInfoCard(booking)
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
                 }
-            }
+            )
         } else {
             if (nickname.isEmpty()){
                 Text("Вы не вошли в акаунт.", style = MaterialTheme.typography.bodySmall)
             } else {
                 Text("У вас пока нет бронирований.", style = MaterialTheme.typography.bodySmall)
             }
-    }
-}
-    }
-
-@Composable
-fun FlightBookingCard(flight: Flight, booking: Booking, bookingDao: BookingDao, onBookingDeleted: (Int) -> Unit) {
-    var showMenu by remember { mutableStateOf(false) }
-
-    val longPressModifier = Modifier.pointerInput(Unit) {
-        detectTapGestures(
-            onLongPress = {
-                showMenu = true
-            }
-        )
-    }
-
-    Card(
-        modifier = longPressModifier
-            .fillMaxWidth()
-            .padding(8.dp),
-        elevation = CardDefaults.cardElevation(4.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "${flight.departure} - ${flight.arrival}",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Text(
-                    text = flight.time,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-            Text(
-                text = "Статус: ${booking.status}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-            Text(
-                text = "Дата бронирования: ${booking.bookingDate}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-        }
-    }
-
-    if (showMenu) {
-        MenuDialog(
-            onDismiss = { showMenu = false },
-            booking = booking,
-            onConfirmDelete = { bookingId ->
-                CoroutineScope(Dispatchers.IO).launch {
-                    bookingDao.deleteBookingById(bookingId)
-                }
-                onBookingDeleted(bookingId)
-                showMenu = false
-            }
-        )
-    }
-}
-
-@Composable
-fun MenuDialog(onDismiss: () -> Unit, booking: Booking, onConfirmDelete: (Int) -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Меню") },
-        text = { Text("Вы желаете удалить бронь ${booking.id}:") },
-        confirmButton = {
-            Button(onClick = {
-                onConfirmDelete(booking.id)
-            }) {
-                Text("Да")
-            }
-        },
-        dismissButton = {
-            Button(onClick = onDismiss) {
-                Text("Закрыть")
-            }
-        }
-    )
-}
-
-
-@Composable
-fun NoFlightInfoCard(booking: Booking) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp),
-        elevation = CardDefaults.cardElevation(4.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "Информация о рейсе не найдена",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onErrorContainer
-            )
-            Text(
-                text = "Статус: ${booking.status}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onErrorContainer
-            )
-            Text(
-                text = "Дата бронирования: ${booking.bookingDate}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onErrorContainer
-            )
         }
     }
 }
 
 
+//@Composable
+//fun FlightBookingCard(flight: Flight, booking: Booking, bookingDao: BookingDao, onBookingDeleted: (Int) -> Unit) {
+//    var showMenu by remember { mutableStateOf(false) }
+//
+//    val longPressModifier = Modifier.pointerInput(Unit) {
+//        detectTapGestures(
+//            onLongPress = {
+//                showMenu = true
+//            }
+//        )
+//    }
+//
+//    Card(
+//        modifier = longPressModifier
+//            .fillMaxWidth()
+//            .padding(8.dp),
+//        elevation = CardDefaults.cardElevation(4.dp),
+//        shape = RoundedCornerShape(12.dp),
+//        colors = CardDefaults.cardColors(
+//            containerColor = MaterialTheme.colorScheme.primaryContainer
+//        )
+//    ) {
+//        Column(
+//            modifier = Modifier.padding(16.dp),
+//            verticalArrangement = Arrangement.spacedBy(8.dp)
+//        ) {
+//            Row(
+//                modifier = Modifier.fillMaxWidth(),
+//                horizontalArrangement = Arrangement.SpaceBetween
+//            ) {
+//                Text(
+//                    text = "${flight.departure} - ${flight.arrival}",
+//                    style = MaterialTheme.typography.titleMedium,
+//                    color = MaterialTheme.colorScheme.onPrimaryContainer
+//                )
+//                Text(
+//                    text = flight.time,
+//                    style = MaterialTheme.typography.bodySmall,
+//                    color = MaterialTheme.colorScheme.onPrimaryContainer
+//                )
+//            }
+//            Text(
+//                text = "Статус: ${booking.status}",
+//                style = MaterialTheme.typography.bodyMedium,
+//                color = MaterialTheme.colorScheme.onPrimaryContainer
+//            )
+//            Text(
+//                text = "Дата бронирования: ${booking.bookingDate}",
+//                style = MaterialTheme.typography.bodySmall,
+//                color = MaterialTheme.colorScheme.onPrimaryContainer
+//            )
+//        }
+//    }
+//
+//    if (showMenu) {
+//        MenuDialog(
+//            onDismiss = { showMenu = false },
+//            booking = booking,
+//            onConfirmDelete = { bookingId ->
+//                CoroutineScope(Dispatchers.IO).launch {
+//                    bookingDao.deleteBookingById(bookingId)
+//                }
+//                onBookingDeleted(bookingId)
+//                showMenu = false
+//            }
+//        )
+//    }
+//}
+
+//@Composable
+//fun MenuDialog(onDismiss: () -> Unit, booking: Booking, onConfirmDelete: (Int) -> Unit) {
+//    AlertDialog(
+//        onDismissRequest = onDismiss,
+//        title = { Text("Меню") },
+//        text = { Text("Вы желаете удалить бронь ${booking.id}:") },
+//        confirmButton = {
+//            Button(onClick = {
+//                onConfirmDelete(booking.id)
+//            }) {
+//                Text("Да")
+//            }
+//        },
+//        dismissButton = {
+//            Button(onClick = onDismiss) {
+//                Text("Закрыть")
+//            }
+//        }
+//    )
+//}
+
+
+//@Composable
+//fun NoFlightInfoCard(booking: Booking) {
+//    Card(
+//        modifier = Modifier
+//            .fillMaxWidth()
+//            .padding(8.dp),
+//        elevation = CardDefaults.cardElevation(4.dp),
+//        shape = RoundedCornerShape(12.dp),
+//        colors = CardDefaults.cardColors(
+//            containerColor = MaterialTheme.colorScheme.errorContainer
+//        )
+//    ) {
+//        Column(
+//            modifier = Modifier.padding(16.dp),
+//            verticalArrangement = Arrangement.spacedBy(8.dp)
+//        ) {
+//            Text(
+//                text = "Информация о рейсе не найдена",
+//                style = MaterialTheme.typography.titleMedium,
+//                color = MaterialTheme.colorScheme.onErrorContainer
+//            )
+//            Text(
+//                text = "Статус: ${booking.status}",
+//                style = MaterialTheme.typography.bodyMedium,
+//                color = MaterialTheme.colorScheme.onErrorContainer
+//            )
+//            Text(
+//                text = "Дата бронирования: ${booking.bookingDate}",
+//                style = MaterialTheme.typography.bodySmall,
+//                color = MaterialTheme.colorScheme.onErrorContainer
+//            )
+//        }
+//    }
+//}
+
+
 
 
 
 @Composable
-fun AddFlightDialog(onDismiss: () -> Unit, userDao: UserDao, flightDao: FlightDao) {
+fun AddFlightDialog(onDismiss: () -> Unit, userDao: UserDao, flightDao: FlightDao,validatePrice: (String) -> Boolean) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.medium,
@@ -508,18 +572,23 @@ fun AddFlightDialog(onDismiss: () -> Unit, userDao: UserDao, flightDao: FlightDa
                 userDao = userDao,
                 userRole = "admin",
                 flightDao = flightDao,
-                onFlightAdded = onDismiss
+                onFlightAdded = onDismiss,
+                validatePrice = validatePrice
             )
         }
     }
 }
+
+
+
 
 @Composable
 fun AddFlightScreen(
     userDao: UserDao,
     userRole: String,
     flightDao: FlightDao,
-    onFlightAdded: () -> Unit
+    onFlightAdded: () -> Unit,
+    validatePrice: (String) -> Boolean
 ) {
     var flightNumber by remember { mutableStateOf("") }
     var departure by remember { mutableStateOf("") }
@@ -572,25 +641,37 @@ fun AddFlightScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        TextField(
-            value = time,
-            onValueChange = { time = it },
-            label = { Text("Время") }
+        TimePicker(
+            selectedTime = time,
+            onTimeSelected = { selectedTime -> time = selectedTime }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
         TextField(
             value = price,
-            onValueChange = { price = it },
-            label = { Text("Цена") }
+            onValueChange = {
+                price = it
+                // Валидация цены
+                if (!validatePrice(price)) {
+                    errorMessage = "Цена должна содержать только числа."
+                } else {
+                    errorMessage = ""
+                }
+            },
+            label = { Text("Цена") },
+            isError = errorMessage.isNotEmpty()
         )
+
         Spacer(modifier = Modifier.height(32.dp))
         Button(
             onClick = {
-                isDataConfirmed = flightNumber.isNotEmpty() && departure.isNotEmpty() && arrival.isNotEmpty() && date.isNotEmpty() && time.isNotEmpty() && price.isNotEmpty()
+                isDataConfirmed = flightNumber.isNotEmpty() && departure.isNotEmpty() &&
+                        arrival.isNotEmpty() && date.isNotEmpty() &&
+                        time.isNotEmpty() && price.isNotEmpty() &&
+                        validatePrice(price) // Проверка валидности цены
                 if (!isDataConfirmed) {
-                    errorMessage = "Пожалуйста, подтвердите данные и заполните все поля"
+                    errorMessage = "Пожалуйста, подтвердите данные и заполните все поля корректно."
                 }
             },
             colors = ButtonDefaults.buttonColors(
@@ -638,6 +719,39 @@ fun AddFlightScreen(
         }
     }
 }
+
+
+@Composable
+fun TimePicker(
+    selectedTime: String,
+    onTimeSelected: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val hour = remember { mutableStateOf(12) } // Начальный час
+    val minute = remember { mutableStateOf(0) } // Начальная минута
+    val openDialog = remember { mutableStateOf(false) }
+
+    Button(
+        onClick = { openDialog.value = true }) {
+        Text(text = if (selectedTime.isEmpty()) "Выберите время" else selectedTime)
+    }
+
+    if (openDialog.value) {
+        TimePickerDialog(
+            context,
+            { _, selectedHour, selectedMinute ->
+                hour.value = selectedHour
+                minute.value = selectedMinute
+                onTimeSelected(String.format("%02d:%02d", selectedHour, selectedMinute))
+                openDialog.value = false
+            },
+            hour.value,
+            minute.value,
+            true
+        ).show()
+    }
+}
+
 @Composable
 fun DatePickerButton(
     selectedDate: String,
@@ -648,7 +762,7 @@ fun DatePickerButton(
     val showDialog = remember { mutableStateOf(false) }
 
     Button(onClick = { showDialog.value = true }) {
-        Text("Выберите дату: $selectedDate")
+        Text("Выберите дату $selectedDate")
     }
 
     if (showDialog.value) {
@@ -922,5 +1036,5 @@ class MockBookingDao : BookingDao {
 @ExperimentalPagerApi
 @ExperimentalFoundationApi
 fun DefaultPreview() {
-    MyApp(userDao = MockUserDao(), flightDao = MockFlightDao(), bookingDao = MockBookingDao())
+    MyApp(userDao = MockUserDao(), flightDao = MockFlightDao(), bookingDao = MockBookingDao(), validatePrice = { price: String -> true })
 }
