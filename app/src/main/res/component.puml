@@ -1,0 +1,26 @@
+@startuml
+'https://plantuml.com/component-diagram
+
+package "Version Control" {
+  [Git Repository]
+}
+
+package "Develepment Environment" {
+  [Android Studio]
+  [Gradle Build]
+  [Kotlin]
+}
+
+
+package "Applications Components" {
+  [Aviagerman App]-->[Database]
+}
+
+[Git Repository]-->[Aviagerman App]
+[Kotlin]-->[Aviagerman App]
+[Gradle Build]-->[Aviagerman App]
+[Android Studio]-->[Aviagerman App]
+
+
+
+@enduml

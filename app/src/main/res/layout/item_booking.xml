@@ -1,31 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/itemLayout"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="?android:attr/selectableItemBackground">
 
     <TextView
         android:id="@+id/flightInfo"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:text="Flight Info"
         android:textSize="16sp" />
 
     <TextView
         android:id="@+id/bookingStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:text="Booking Status"
         android:textSize="14sp" />
 
     <TextView
         android:id="@+id/bookingDate"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:text="Booking Date"
         android:textSize="14sp" />
-
-    <Button
-        android:id="@+id/deleteButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Удалить" />
 </LinearLayout>

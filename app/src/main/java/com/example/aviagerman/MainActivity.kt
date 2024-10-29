@@ -36,6 +36,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -143,12 +144,19 @@ fun MyApp(
                         validatePrice = validatePrice // Передача функции
                     )
                     1 -> BookingScreen(bookingDao = bookingDao, userDao = userDao, flightDao = flightDao, nickname = nickname)
-                    2 -> ProfileScreen(userDao = userDao, nickname = nickname, onNicknameChange = { newNickname -> nickname = newNickname }, flightDao = flightDao)
+                    2 -> ProfileScreen(userDao = userDao, nickname = nickname, onNicknameChange = { newNickname -> nickname = newNickname }, flightDao = flightDao, onNavigateToTickets = {
+                        coroutineScope.launch {
+                            pagerState.scrollToPage(0)
+                        }
+                    })
                 }
             }
         }
     }
 }
+
+
+
 @Composable
 fun BottomNavigationBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
     NavigationBar {
@@ -264,6 +272,7 @@ fun TicketSearchScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         Column(horizontalAlignment = Alignment.Start) {
+                            Text(text = "${flight.date}", style = MaterialTheme.typography.bodySmall)
                             Text(text = "${flight.departure} - ${flight.arrival}", style = MaterialTheme.typography.bodyMedium)
                             Text(text = "Время: ${flight.time}, Цена: ${flight.price} руб.", style = MaterialTheme.typography.bodySmall)
                         }
@@ -343,13 +352,18 @@ fun ConfirmationDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     )
 }
 
-class BookingAdapter(private val bookings: List<Booking>, private val flightDetails: Map<Int, Flight>, private val bookingDao: BookingDao, private val onBookingDeleted: (Int) -> Unit) : RecyclerView.Adapter<BookingAdapter.BookingViewHolder>() {
+class BookingAdapter(
+    private val bookings: List<Booking>,
+    private val flightDetails: Map<Int, Flight>,
+    private val onBookingLongPress: (Booking) -> Unit,
+    private val onBookingSelected: (Booking) -> Unit
+) : RecyclerView.Adapter<BookingAdapter.BookingViewHolder>() {
 
     class BookingViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val flightInfo: TextView = itemView.findViewById(R.id.flightInfo)
         val bookingStatus: TextView = itemView.findViewById(R.id.bookingStatus)
         val bookingDate: TextView = itemView.findViewById(R.id.bookingDate)
-        val deleteButton: Button = itemView.findViewById(R.id.deleteButton)
+        val itemLayout: LinearLayout = itemView.findViewById(R.id.itemLayout)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): BookingViewHolder {
@@ -362,12 +376,11 @@ class BookingAdapter(private val bookings: List<Booking>, private val flightDeta
         val flight = flightDetails[booking.flightId]
         holder.flightInfo.text = "${flight?.departure} - ${flight?.arrival}"
         holder.bookingStatus.text = "Статус: ${booking.status}"
-        holder.bookingDate.text = "Дата бронирования: ${booking.bookingDate}"
-        holder.deleteButton.setOnClickListener {
-            CoroutineScope(Dispatchers.IO).launch {
-                bookingDao.deleteBookingById(booking.id)
-            }
-            onBookingDeleted(booking.id)
+        holder.bookingDate.text = "Дата бронирования: ${flight?.date}"
+        holder.itemView.setOnLongClickListener {
+            onBookingLongPress(booking)
+            onBookingSelected(booking)
+            true
         }
     }
 
@@ -376,10 +389,14 @@ class BookingAdapter(private val bookings: List<Booking>, private val flightDeta
     }
 }
 
+
 @Composable
 fun BookingScreen(userDao: UserDao, bookingDao: BookingDao, flightDao: FlightDao, nickname: String) {
     var bookings by remember { mutableStateOf<List<Booking>>(emptyList()) }
     var flightDetails by remember { mutableStateOf<Map<Int, Flight>>(emptyMap()) }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var bookingToDelete by remember { mutableStateOf<Booking?>(null) }
+    var selectedBooking by remember { mutableStateOf<Booking?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
     // Загружаем бронирования и соответствующие данные о рейсах
@@ -414,9 +431,12 @@ fun BookingScreen(userDao: UserDao, bookingDao: BookingDao, flightDao: FlightDao
                 factory = { context ->
                     RecyclerView(context).apply {
                         layoutManager = LinearLayoutManager(context)
-                        adapter = BookingAdapter(bookings, flightDetails, bookingDao) { bookingId ->
-                            bookings = bookings.filter { it.id != bookingId } // Удаляем бронирование из списка
-                        }
+                        adapter = BookingAdapter(bookings, flightDetails, { booking ->
+                            bookingToDelete = booking
+                            showDeleteConfirmation = true
+                        }, { booking ->
+                            selectedBooking = booking
+                        })
                     }
                 }
             )
@@ -428,6 +448,43 @@ fun BookingScreen(userDao: UserDao, bookingDao: BookingDao, flightDao: FlightDao
             }
         }
     }
+
+    if (showDeleteConfirmation) {
+        ConfirmationDeleteDialog(
+            onConfirm = {
+                bookingToDelete?.let { booking ->
+                    coroutineScope.launch(Dispatchers.IO) {
+                        bookingDao.deleteBookingById(booking.id)
+                        withContext(Dispatchers.Main) {
+                            bookings = bookings.filter { it.id != booking.id }
+                            showDeleteConfirmation = false
+                        }
+                    }
+                }
+            },
+            onDismiss = { showDeleteConfirmation = false }
+        )
+    }
+}
+
+
+@Composable
+fun ConfirmationDeleteDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Подтвердить удаление") },
+        text = { Text("Вы уверены, что хотите удалить эту бронь?") },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text("Да")
+            }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) {
+                Text("Нет")
+            }
+        }
+    )
 }
 
 
@@ -781,7 +838,7 @@ fun DatePickerButton(
 }
 
 @Composable
-fun ProfileScreen(userDao: UserDao, flightDao: FlightDao, nickname: String, onNicknameChange: (String) -> Unit) {
+fun ProfileScreen(userDao: UserDao, flightDao: FlightDao, nickname: String, onNicknameChange: (String) -> Unit, onNavigateToTickets: () -> Unit) {
     var isLoggedIn by remember { mutableStateOf(nickname.isNotEmpty()) }
     var showLogin by remember { mutableStateOf(true) }
     var userRole by remember { mutableStateOf("") }
@@ -812,17 +869,17 @@ fun ProfileScreen(userDao: UserDao, flightDao: FlightDao, nickname: String, onNi
         }
     } else {
         if (showLogin) {
-            LoginScreen(userDao) { loginNickname ->
+            LoginScreen(userDao, onLoginSuccess = { loginNickname ->
                 isLoggedIn = true
                 onNicknameChange(loginNickname)
                 showLogin = false
-            }
+            }, onNavigateToTickets = onNavigateToTickets)
         } else {
-            RegistrationScreen(userDao) { registerNickname ->
+            RegistrationScreen(userDao, onRegisterSuccess = { registerNickname ->
                 isLoggedIn = true
                 onNicknameChange(registerNickname)
                 showLogin = true
-            }
+            }, onNavigateToTickets = onNavigateToTickets)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -834,8 +891,9 @@ fun ProfileScreen(userDao: UserDao, flightDao: FlightDao, nickname: String, onNi
 }
 
 
+
 @Composable
-fun RegistrationScreen(userDao: UserDao, onRegisterSuccess: (String) -> Unit) {
+fun RegistrationScreen(userDao: UserDao, onRegisterSuccess: (String) -> Unit, onNavigateToTickets: () -> Unit) {
     var nickname by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
@@ -877,6 +935,7 @@ fun RegistrationScreen(userDao: UserDao, onRegisterSuccess: (String) -> Unit) {
                         val newUser = User(nickname = nickname, password = password, role = "user")
                         userDao.insertUser(newUser)
                         onRegisterSuccess(nickname)
+                        onNavigateToTickets()
                     } else {
                         errorMessage = "Такой пользователь уже существует"
                     }
@@ -896,7 +955,7 @@ fun RegistrationScreen(userDao: UserDao, onRegisterSuccess: (String) -> Unit) {
 }
 
 @Composable
-fun LoginScreen(userDao: UserDao, onLoginSuccess: (String) -> Unit) {
+fun LoginScreen(userDao: UserDao, onLoginSuccess: (String) -> Unit, onNavigateToTickets: () -> Unit) {
     var nickname by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
@@ -936,6 +995,7 @@ fun LoginScreen(userDao: UserDao, onLoginSuccess: (String) -> Unit) {
                     val user = userDao.getUser(nickname, password)
                     if (user != null) {
                         onLoginSuccess(nickname)
+                        onNavigateToTickets()
                     } else {
                         errorMessage = "Неверный никнейм или пароль"
                     }

@@ -1,0 +1,148 @@
+@startuml
+
+
+' Entities
+entity "User" {
+    +Int id
+    +String nickname
+    +String password
+    +String role
+}
+
+entity "Flight" {
+    +Int id
+    +String flightNumber
+    +String departure
+    +String arrival
+    +String date
+    +String time
+    +Double price
+}
+
+entity "Booking" {
+    +Int id
+    +Int userId
+    +Int flightId
+    +String bookingDate
+    +String status
+}
+
+' DAOs
+interface "UserDao" {
+    +suspend insertUser(user: User)
+    +suspend getUser(nickname: String, password: String): User?
+    +suspend getUsersByRole(role: String): List<User>
+    +suspend getUserRole(nickname: String): String?
+    +suspend getUserIdByNickname(nickname: String): Int?
+}
+
+interface "FlightDao" {
+    +suspend insertFlight(flight: Flight)
+    +suspend getAllFlights(): List<Flight>
+    +suspend getFlightById(flightId: Int): Flight?
+    +suspend deleteFlight(flight: Flight)
+}
+
+interface "BookingDao" {
+    +suspend insertBooking(booking: Booking)
+    +suspend getBookingsByUserId(userId: Int): List<Booking>
+    +suspend getBookingsByFlightId(flightId: Int): List<Booking>
+    +suspend deleteBooking(booking: Booking)
+    +suspend deleteBookingById(id: Int)
+    +suspend updateBookingStatus(bookingId: Int, status: String)
+}
+
+' Mock DAOs
+class "MockUserDao" {
+    +suspend insertUser(user: User)
+    +suspend getUser(nickname: String, password: String): User?
+    +suspend getUsersByRole(role: String): List<User>
+    +suspend getUserRole(nickname: String): String?
+    +suspend getUserIdByNickname(nickname: String): Int?
+}
+
+class "MockFlightDao" {
+    +suspend insertFlight(flight: Flight)
+    +suspend getAllFlights(): List<Flight>
+    +suspend getFlightById(flightId: Int): Flight?
+    +suspend deleteFlight(flight: Flight)
+}
+
+class "MockBookingDao" {
+    +suspend insertBooking(booking: Booking)
+    +suspend getBookingsByUserId(userId: Int): List<Booking>
+    +suspend getBookingsByFlightId(flightId: Int): List<Booking>
+    +suspend deleteBooking(booking: Booking)
+    +suspend deleteBookingById(id: Int)
+    +suspend updateBookingStatus(bookingId: Int, status: String)
+}
+
+' Database
+class "AppDatabase" {
+    +userDao(): UserDao
+    +flightDao(): FlightDao
+    +bookingDao(): BookingDao
+}
+
+' MainActivity
+class "MainActivity" {
+    +onCreate(savedInstanceState: Bundle)
+    +BookingScreen(userDao: UserDao, bookingDao: BookingDao, flightDao: FlightDao, nickname: String)
+    +AddFlightDialog(onDismiss: () -> Unit, userDao: UserDao, flightDao: FlightDao, validatePrice: (String) -> Boolean)
+    +ProfileScreen(userDao: UserDao, flightDao: FlightDao, nickname: String, onNicknameChange: (String) -> Unit)
+    +RegistrationScreen(userDao: UserDao, onRegisterSuccess: (String) -> Unit)
+    +LoginScreen(userDao: UserDao, onLoginSuccess: (String) -> Unit)
+
+}
+
+' BookingAdapter
+class "BookingAdapter" {
+    +BookingAdapter(bookings: List<Booking>, flightDetails: Map<Int, Flight>, bookingDao: BookingDao, onBookingDeleted: (Int) -> Unit)
+    +onCreateViewHolder(parent: ViewGroup, viewType: Int): BookingViewHolder
+    +onBindViewHolder(holder: BookingViewHolder, position: Int)
+    +getItemCount(): Int
+}
+
+
+
+' Relationships
+UserDao --> User
+FlightDao --> Flight
+BookingDao --> Booking
+
+AppDatabase --> UserDao
+AppDatabase --> FlightDao
+AppDatabase --> BookingDao
+
+Booking --> User : "userId"
+Booking --> Flight : "flightId"
+
+MainActivity --> AppDatabase
+MainActivity --> UserDao
+MainActivity --> FlightDao
+MainActivity --> BookingDao
+
+BookingScreen --> BookingDao
+BookingScreen --> FlightDao
+BookingScreen --> UserDao
+
+BookingAdapter --> Booking
+BookingAdapter --> Flight
+
+AddFlightDialog --> UserDao
+AddFlightDialog --> FlightDao
+
+AddFlightScreen --> UserDao
+AddFlightScreen --> FlightDao
+
+ProfileScreen --> UserDao
+ProfileScreen --> FlightDao
+
+LoginScreen --> UserDao
+RegistrationScreen --> UserDao
+
+MockUserDao --|> UserDao
+MockFlightDao --|> FlightDao
+MockBookingDao --|> BookingDao
+
+@enduml
