@@ -115,15 +115,31 @@ Aviagerman - это мобильное приложение для бронир�
    
 ### 4.1 Диаграмма классов
 
-   ![Alt-текст](/docs/class/class_diagram.png)
+   ![Alt-текст](/docs/class/classDiagram.png)
 
 ### 4.2 Глоссарий к диаграмме классов
+
+| Класс/Интерфейс      | Описание и Методы                                                                                                                                                                                                                                           |
+|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `MainActivity`       | Основной класс активности, который управляет экранами и взаимодействиями. <br> **Методы:** <ul><li>`onCreate/saveInstanceState`</li><li>`BookingsScreen(userDao, bookingDao, flightDao, nickname)`</li><li>`AddFlightDialog(onDismiss: () -> Boolean)`</li><li>`ProfileScreen(userDao)`</li><li>`RegistrationScreen(userDao, onRegisterSuccess: (String) -> Unit)`</li><li>`LoginScreen(userDao, onLoginSuccess: (String) -> Unit)`</li></ul> |
+| `MockUserDao`        | Моковая реализация `UserDao` для целей тестирования. <br> **Методы:** <ul><li>`suspend insertUser(user: User)`</li><li>`suspend getUser(nickname: String, password: String): User?`</li><li>`suspend getUsersByRole(role: String): List<User>`</li><li>`suspend getUserRole(nickname: String): String?`</li><li>`suspend getUserIdByNickname(nickname: String): Int?`</li></ul> |
+| `MockBookingDao`     | Моковая реализация `BookingDao` для целей тестирования. <br> **Методы:** <ul><li>`suspend insertBooking(booking: Booking)`</li><li>`suspend getBookingsByUser(userId: Int): List<Booking>`</li><li>`suspend getBookingsByFlight(flightId: Int): List<Booking>`</li><li>`suspend deleteBookingById(id: Int)`</li><li>`suspend updateBookingStatus(bookingId: Int, status: String)`</li></ul> |
+| `UserDao`            | Объект доступа к данным для операций с пользователями. <br> **Методы:** <ul><li>`suspend insertUser(user: User)`</li><li>`suspend getUser(nickname: String, password: String): User?`</li><li>`suspend getUsersByRole(role: String): List<User>`</li><li>`suspend getUserRole(nickname: String): String?`</li><li>`suspend getUserIdByNickname(nickname: String): Int?`</li></ul> |
+| `BookingDao`         | Объект доступа к данным для операций с бронированиями. <br> **Методы:** <ul><li>`suspend insertBooking(booking: Booking)`</li><li>`suspend getBookingsByUser(userId: Int): List<Booking>`</li><li>`suspend getBookingsByFlight(flightId: Int): List<Booking>`</li><li>`suspend deleteBooking(booking: Booking)`</li><li>`suspend updateBookingStatus(bookingId: Int, status: String)`</li></ul> |
+| `FlightDao`          | Объект доступа к данным для операций с рейсами. <br> **Методы:** <ul><li>`suspend insertFlight(flight: Flight)`</li><li>`suspend getAllFlights(): List<Flight>`</li><li>`suspend getFlightById(flightId: Int): Flight?`</li><li>`suspend deleteFlight(flight: Flight)`</li></ul> |
+| `AppDatabase`        | Представляет базу данных приложения. <br> **Поля:** <ul><li>`userDao: UserDao`</li><li>`flightDao: FlightDao`</li><li>`bookingDao: BookingDao`</li></ul> |
+| `BookingAdapter`     | Адаптер для управления и отображения данных о бронированиях. <br> **Методы:** <ul><li>`onCreateViewHolder(parent: ViewGroup, viewType: Int): BookingViewHolder`</li><li>`onBindViewHolder(holder: BookingViewHolder, position: Int)`</li><li>`getItemCount(): Int`</li></ul> |
+| `Booking`            | Сущность, представляющая бронирование. <br> **Поля:** <ul><li>`id: Int`</li><li>`userId: Int`</li><li>`flightId: Int`</li><li>`bookingDate: String`</li><li>`status: String`</li></ul> |
+| `User`               | Сущность, представляющая пользователя. <br> **Поля:** <ul><li>`id: Int`</li><li>`nickname: String`</li><li>`password: String`</li><li>`role: String`</li></ul> |
+| `Flight`             | Сущность, представляющая рейс. <br> **Поля:** <ul><li>`id: Int`</li><li>`flightNumber: String`</li><li>`departure: String`</li><li>`arrival: String`</li><li>`date: String`</li><li>`time: String`</li><li>`price: Double`</li></ul> |
 
 
 ## 5. Модель вариантов использования
 
 ### 5.1 Диаграмма вариантов использования
 
+   ![Alt-текст](/docs/usage/userUsageDiagram.png)
+   ![Alt-текст](/docs/usage/adminUsageDiagram.png)
 
 ### 5.2 Поток событий
 
@@ -134,32 +150,44 @@ Aviagerman - это мобильное приложение для бронир�
 
 #### 6.1.1 Диаграмма активности 1
 
+![Alt-текст](/docs/activity/activityAuth.png)
+
 #### 6.1.2 Диаграмма активности 2
+
+![Alt-текст](/docs/activity/activityBooking.png)
 
 #### 6.1.3 Диаграмма активности 3
 
+![Alt-текст](/docs/activity/activityDelete.png)
 
 ### 6.2 Диаграммы последовательности
 
 #### 6.2.1 Диаграмма последовательности 1
 
+![Alt-текст](/docs/sequence/sequencAddFlight.png)
 
 #### 6.2.2 Диаграмма последовательности 2
 
+![Alt-текст](/docs/sequence/sequenceBooking.png)
 
 #### 6.2.3 Диаграмма последовательности 3
 
+![Alt-текст](/docs/sequence/sequenceDelete.png)
 
 ### 6.3 Диаграммы состояний
 
 #### 6.3.1 Диаграмма состояния 1
 
+![Alt-текст](/docs/state/stateAdd.png)
 
 #### 6.3.2 Диаграмма состояния 2
 
+![Alt-текст](/docs/state/stateBooking.png)
 
 #### 6.3.3 Диаграмма состояния 3
 
+![Alt-текст](/docs/state/stateMain.png)
 
 ### 6.4 Диаграмма компонентов и развертывания
 
+![Alt-текст](/docs/component/component.ppg)
